@@ -91,27 +91,27 @@ class MongoDbAdapter {
 	 *  - offset
 	 *  - sort
 	 *  - search
-	 *  - searchFields
 	 *  - query
 	 *
 	 * @param {Object} filters
-	 * @returns {Promise<Array>}
+	 * @returns {Cursor<TSchema>}
 	 *
 	 * @memberof MongoDbAdapter
 	 */
 	find(filters) {
-		return this.createCursor(filters, false).toArray();
+		return this.collection.find(filters, false);
 	}
 
 	/**
 	 * Find an entity by query
 	 *
 	 * @param {Object} query
+	 * @param {Object} options
 	 * @returns {Promise}
 	 * @memberof MemoryDbAdapter
 	 */
-	findOne(query) {
-		return this.collection.findOne(query);
+	findOne(query, options = {}) {
+		return this.collection.findOne(query,options);
 	}
 
 	/**
@@ -155,8 +155,8 @@ class MongoDbAdapter {
 	 *
 	 * @memberof MongoDbAdapter
 	 */
-	count(filters = {}) {
-		return this.createCursor(filters, true);
+	count(filters = {},options = {}) {
+		return this.collection.count(filters,options);
 	}
 
 	/**
@@ -215,13 +215,13 @@ class MongoDbAdapter {
 	/**
 	 * Remove entities which are matched by `query`
 	 *
-	 * @param {Object} query
+	 * @param {Object} filter
 	 * @returns {Promise<Number>} Return with the count of deleted documents.
 	 *
 	 * @memberof MongoDbAdapter
 	 */
-	removeMany(query) {
-		return this.collection.deleteMany(query).then(res => res.deletedCount);
+	removeMany(filter) {
+		return this.collection.deleteMany(filter).then(res => res.deletedCount);
 	}
 
 	/**
@@ -261,68 +261,6 @@ class MongoDbAdapter {
 		return json;
 	}
 
-	/**
-	 * Create a filtered cursor.
-	 *
-	 * Available filters in `params`:
-	 *  - search
-	 * 	- sort
-	 * 	- limit
-	 * 	- offset
-	 *  - query
-	 *
- 	 * @param {Object} params
- 	 * @param {Boolean} isCounting
-	 * @returns {MongoCursor}
-	 */
-	createCursor(params, isCounting) {
-		const fn = isCounting ? this.collection.countDocuments : this.collection.find;
-		let q;
-		if (params) {
-			// Full-text search
-			// More info: https://docs.mongodb.com/manual/reference/operator/query/text/
-			if (_.isString(params.search) && params.search !== "") {
-				q = fn.call(this.collection, Object.assign(params.query || {}, {
-					$text: {
-						$search: params.search
-					}
-				}));
-
-				if (q.project && !isCounting)
-					q.project({ _score: { $meta: "textScore" } });
-
-				if (q.sort && !isCounting) {
-					q.sort({
-						_score: {
-							$meta: "textScore"
-						}
-					});
-				}
-			} else {
-				q = fn.call(this.collection, params.query);
-
-				// Sort
-				if (params.sort && q.sort) {
-					let sort = this.transformSort(params.sort);
-					if (sort)
-						q.sort(sort);
-				}
-			}
-
-			// Offset
-			if (_.isNumber(params.offset) && params.offset > 0)
-				q.skip(params.offset);
-
-			// Limit
-			if (_.isNumber(params.limit) && params.limit > 0)
-				q.limit(params.limit);
-
-			return q;
-		}
-
-		// If not params
-		return fn.call(this.collection, {});
-	}
 
 	/**
 	 * Convert the `sort` param to a `sort` object to Mongo queries.
